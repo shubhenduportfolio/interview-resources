@@ -353,7 +353,586 @@ Try modifying your `train.py` from Chapter 1:
 
 ---
 
-✅ **Next Up**: Chapter 3 — Packaging ML Code with MLflow Projects (How to make your ML code reproducible and portable)
 
+
+# 📘 Chapter 3: Packaging ML Code with MLflow Projects
+
+---
+
+## 🎯 Goal of This Chapter
+
+This chapter teaches you how to **package your ML code** using **MLflow Projects** for **reproducibility**, **portability**, and **scalability**. By the end, you’ll be able to:
+- Define the structure of an MLflow Project
+- Use the `MLproject` file and conda environments
+- Run MLflow Projects locally and remotely
+- Use Git integration for versioned and portable runs
+
+---
+
+## 📦 1. Structure of an MLflow Project
+
+An **MLflow Project** is a **directory** with your ML code and a special file called `MLproject` that defines how to run your code.
+
+### ✅ Basic Structure
+
+```
+my_ml_project/
+├── MLproject
+├── conda.yaml         # or requirements.txt
+├── train.py           # entry point script
+└── data/
+```
+
+Each MLflow Project must contain:
+- An **MLproject file** that defines the project entry point
+- A way to specify dependencies: either `conda.yaml` or `requirements.txt`
+- The actual code (e.g., `train.py`)
+
+---
+
+## 📝 2. MLproject File and Conda Environments
+
+### Example `MLproject` File:
+
+```yaml
+name: iris_rf_project
+
+conda_env: conda.yaml
+
+entry_points:
+  main:
+    parameters:
+      n_estimators: {type: int, default: 100}
+      max_depth: {type: int, default: 3}
+    command: >
+      python train.py --n_estimators {n_estimators} --max_depth {max_depth}
+```
+
+This file does the following:
+- **Gives the project a name**
+- Points to a Conda environment definition (`conda.yaml`)
+- Defines **entry points** (like functions or scripts) and their parameters
+
+### Example `conda.yaml`:
+
+```yaml
+name: iris_env
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+  - scikit-learn
+  - pandas
+  - pip
+  - pip:
+      - mlflow
+```
+
+MLflow will **create an isolated environment** using this file before running the project.
+
+---
+
+## ▶️ 3. Running Projects Locally and Remotely
+
+### ✅ Run Locally
+
+Navigate to the directory and run:
+
+```bash
+mlflow run . -P n_estimators=150 -P max_depth=5
+```
+
+This:
+- Creates a new Conda environment (if not cached)
+- Runs `train.py` with the given parameters
+- Tracks the run and logs results
+
+You can also run from a Git repo:
+
+```bash
+mlflow run https://github.com/yourusername/your-ml-project.git -P max_depth=5
+```
+
+MLflow clones the repo, sets up the env, and runs the project.
+
+---
+
+### 📡 Run Remotely
+
+You can run the project remotely using a **remote MLflow Tracking Server** and **backend** like Databricks or a remote Docker server. (We'll cover this in Chapter 5.)
+
+For now, the key takeaway is:
+> MLflow Projects make your code portable and reproducible across machines or teams.
+
+---
+
+## 🔁 4. Using Git to Manage MLflow Projects
+
+MLflow is designed to work **seamlessly with Git repositories**.
+
+### Why Use Git?
+- Version control of code and experiments
+- Reproducible runs: MLflow logs Git commit hash of each run
+- Easy sharing with others
+
+### Example:
+
+You can run an MLflow Project from a GitHub repo like this:
+
+```bash
+mlflow run https://github.com/username/mlflow-iris-example.git -P n_estimators=200
+```
+
+It will:
+- Clone the repo
+- Use the `MLproject` and `conda.yaml` from that repo
+- Track and run the experiment
+
+This makes collaboration much easier in teams.
+
+---
+
+## 📘 Bonus: Multiple Entry Points
+
+You can define more than one script as an entry point:
+
+```yaml
+entry_points:
+  train:
+    parameters:
+      epochs: {type: int, default: 10}
+    command: python train.py --epochs {epochs}
+
+  evaluate:
+    parameters:
+      model_path: {type: str}
+    command: python evaluate.py --model {model_path}
+```
+
+Run a specific entry point:
+
+```bash
+mlflow run . -e evaluate -P model_path=models/model.pkl
+```
+
+---
+
+## 🧠 Summary
+
+| Feature                 | Use                                                             |
+|-------------------------|------------------------------------------------------------------|
+| `MLproject`             | Defines project name, entry points, and parameters              |
+| `conda.yaml`            | Defines environment dependencies                                |
+| `mlflow run .`          | Runs the current folder as a project                            |
+| `mlflow run <git-url>`  | Clones and runs from a remote Git repository                    |
+| Entry points            | Allow multiple scripts or workflows in a single project         |
+| Git integration         | Enables reproducibility and collaboration                       |
+
+---
+
+## 🧪 Optional Exercise
+
+Create a new MLflow Project:
+
+1. Make a folder: `my_first_project/`
+2. Add `train.py` that accepts parameters using `argparse`
+3. Add `MLproject` and `conda.yaml`
+4. Run the project with different parameters
+5. Use `mlflow ui` to track the runs
+
+---
+
+# 📘 Chapter 4: Managing Models with MLflow Models & Model Registry
+
+---
+
+## 🎯 Goal of This Chapter
+
+This chapter will teach you how to:
+- Save and load models using MLflow
+- Understand MLflow model **flavors** and framework support
+- Use the **Model Registry** for versioning and stage transitions
+- Serve models via a **REST API**
+
+---
+
+## 💾 1. Saving and Loading Models with MLflow
+
+### ✅ Saving a model
+
+MLflow provides built-in support to log and save models. You can log a model during an experiment like this:
+
+```python
+import mlflow.sklearn
+
+# Save the model under the "model" artifact path
+mlflow.sklearn.log_model(model, "model")
+```
+
+This stores the model in the MLflow **artifacts directory**, and registers its metadata.
+
+You can also **manually save** a model:
+
+```python
+mlflow.sklearn.save_model(model, path="saved_model")
+```
+
+### ✅ Loading a model
+
+To load a model back later:
+
+```python
+loaded_model = mlflow.sklearn.load_model("runs:/<run_id>/model")
+preds = loaded_model.predict(X_test)
+```
+
+You can also load a local saved model:
+
+```python
+model = mlflow.sklearn.load_model("saved_model")
+```
+
+---
+
+## 🧪 2. Model Flavors and Supported Frameworks
+
+MLflow supports **multiple ML frameworks**, each with its own **flavor**.
+
+| Framework        | Flavor module                  |
+|------------------|--------------------------------|
+| Scikit-learn     | `mlflow.sklearn`               |
+| TensorFlow       | `mlflow.tensorflow`            |
+| PyTorch          | `mlflow.pytorch`               |
+| XGBoost          | `mlflow.xgboost`               |
+| LightGBM         | `mlflow.lightgbm`              |
+| H2O              | `mlflow.h2o`                   |
+| Generic Python   | `mlflow.pyfunc`                |
+
+### What is a Flavor?
+
+A **flavor** is a way MLflow represents a model. A single model can have **multiple flavors**, including:
+
+- `python_function`: A generic interface for model inference
+- Framework-specific (e.g., `sklearn`, `tensorflow`, etc.)
+
+This makes models portable and framework-agnostic.
+
+---
+
+## 🏛️ 3. Registering, Versioning, and Stage Transitioning Models
+
+MLflow provides a **Model Registry** to manage models like a software package:
+- **Register** models from experiment runs
+- **Version** control and track model lineage
+- Assign models to **stages** like `Staging`, `Production`, `Archived`
+- Allow **comments and annotations** for collaboration
+
+### ✅ Register a model
+
+After logging a model during a run:
+
+```python
+from mlflow.tracking import MlflowClient
+
+client = MlflowClient()
+run_id = "<your_run_id>"
+
+# Register the model
+result = client.create_registered_model("iris_rf_model")
+model_uri = f"runs:/{run_id}/model"
+
+client.create_model_version(name="iris_rf_model", source=model_uri, run_id=run_id)
+```
+
+Alternatively, use autologging and register from the UI.
+
+---
+
+### ✅ Transition a model version to a stage
+
+```python
+client.transition_model_version_stage(
+    name="iris_rf_model",
+    version=1,
+    stage="Production"
+)
+```
+
+Stages include:
+- `None`
+- `Staging`
+- `Production`
+- `Archived`
+
+This lets you safely **promote models** across development pipelines.
+
+---
+
+### ✅ Load from registry
+
+```python
+model = mlflow.sklearn.load_model("models:/iris_rf_model/Production")
+```
+
+---
+
+## 🌐 4. Serving Models via REST API
+
+MLflow can serve any registered model as a **REST API server** using:
+
+```bash
+mlflow models serve -m models:/iris_rf_model/Production -p 1234
+```
+
+### 📨 Send a request
+
+```bash
+curl -X POST http://127.0.0.1:1234/invocations \
+  -H "Content-Type: application/json" \
+  -d '{
+        "columns": ["sepal length (cm)", "sepal width (cm)", "petal length (cm)", "petal width (cm)"],
+        "data": [[5.1, 3.5, 1.4, 0.2]]
+      }'
+```
+
+### 🛠 Notes:
+- The API expects a `pandas`-style JSON format
+- Responses are predictions like `[0]`
+
+You can also deploy models with:
+- **Docker containers**: `mlflow models build-docker`
+- **Cloud platforms**: Azure ML, AWS Sagemaker (via plugins)
+
+---
+
+## 🧠 Summary
+
+| Feature                     | Purpose                                                    |
+|-----------------------------|------------------------------------------------------------|
+| `log_model()`               | Save and log model during experiment                       |
+| `save_model()`              | Save model to a local directory                           |
+| `load_model()`              | Load model from run or registry                           |
+| `Model Flavors`             | Support for multiple ML frameworks                        |
+| `Model Registry`            | Centralized model management system                       |
+| `Model Versioning`          | Track and manage multiple versions of a model             |
+| `Stage Transition`          | Promote models to Staging, Production, or Archive         |
+| `REST API`                  | Serve model locally or in production                      |
+
+---
+
+## 🧪 Optional Exercise
+
+1. Train a new model using scikit-learn.
+2. Log the model with `mlflow.sklearn.log_model()`.
+3. Register the model in MLflow Registry.
+4. Promote it to "Staging", then "Production".
+5. Serve it with `mlflow models serve`.
+6. Test it via `curl` or Postman.
+
+---
+
+# 📘 Chapter 5: Deploying and Scaling with MLflow
+
+---
+
+## 🎯 Goal of This Chapter
+
+In this final chapter, you'll learn how to **deploy and scale MLflow in real-world production scenarios**. By the end, you’ll understand:
+- Various model deployment options (Local, REST, Docker, Cloud)
+- How to integrate MLflow with platforms like **SageMaker**, **Azure ML**, and **Kubernetes**
+- How to set up a **remote MLflow Tracking Server**
+- Best practices for deploying and scaling ML systems with MLflow
+
+---
+
+## 🚀 1. Model Deployment Options
+
+MLflow offers several ways to **deploy your trained models**, depending on your infrastructure and needs.
+
+### ✅ A. Local REST API
+
+Serve a model from the local machine:
+
+```bash
+mlflow models serve -m models:/iris_rf_model/Production -p 1234
+```
+
+- Serves the model as a REST API on `http://localhost:1234/invocations`
+- Accepts JSON requests (in Pandas DataFrame format)
+- Fast and easy for testing
+
+---
+
+### ✅ B. Docker Container
+
+You can package your model as a **Docker image**:
+
+```bash
+mlflow models build-docker -m models:/iris_rf_model/Production -n iris_image
+```
+
+Then run the container:
+
+```bash
+docker run -p 1234:8080 iris_image
+```
+
+- Good for containerized environments
+- Works well with Kubernetes, AWS ECS, Azure Container Instances, etc.
+
+---
+
+### ✅ C. Cloud Platforms
+
+MLflow supports **direct deployment** to:
+
+#### 🔹 Amazon SageMaker
+
+```bash
+mlflow sagemaker deploy --app-name iris-app \
+  -m models:/iris_rf_model/Production \
+  --region us-west-2
+```
+
+You must configure:
+- AWS credentials
+- IAM roles
+- S3 bucket for storing models
+
+#### 🔹 Azure ML
+
+With the [MLflow-Azure plugin](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-use-mlflow):
+
+```bash
+mlflow azureml build-and-push-container-image -m models:/iris_rf_model/Production
+```
+
+Then deploy it to Azure ML endpoints.
+
+---
+
+### ✅ D. Kubernetes (Advanced)
+
+Using `mlflow models serve` inside a Docker container, you can run the model in Kubernetes.
+
+Steps:
+1. Build Docker image with MLflow model
+2. Push to container registry (DockerHub, ECR, ACR)
+3. Write Kubernetes deployment + service YAML files
+4. Deploy using `kubectl apply -f <file.yaml>`
+
+This is suitable for **high-availability**, **scalable**, and **load-balanced** deployments.
+
+---
+
+## 🌐 2. Integrating MLflow with External Tools
+
+MLflow integrates with popular MLOps and orchestration platforms:
+
+| Tool         | Purpose |
+|--------------|---------|
+| **SageMaker** | Deploy model endpoints in AWS |
+| **Azure ML**  | Deploy and manage models on Azure cloud |
+| **Kubernetes** | Scalable, self-managed model serving |
+| **Airflow**   | Schedule ML training/deployment workflows |
+| **Databricks** | Native MLflow support with collaborative tracking |
+
+You can also use MLflow models inside CI/CD pipelines (e.g., GitHub Actions, Jenkins).
+
+---
+
+## 🛠️ 3. Setting Up a Remote MLflow Tracking Server
+
+MLflow supports **remote tracking** to a central server for collaboration.
+
+### ✅ Step-by-step
+
+#### Step 1: Start Tracking Server
+
+```bash
+mlflow server \
+  --backend-store-uri sqlite:///mlflow.db \
+  --default-artifact-root ./mlruns \
+  --host 0.0.0.0 --port 5000
+```
+
+For production:
+- Use **PostgreSQL/MySQL** instead of SQLite
+- Use **S3/GCS/Azure Blob** for artifact storage
+- Secure with **nginx + HTTPS + authentication**
+
+#### Step 2: Point Your Client
+
+Set the tracking URI in your scripts:
+
+```python
+mlflow.set_tracking_uri("http://<your-server-ip>:5000")
+```
+
+Or set the environment variable:
+
+```bash
+export MLFLOW_TRACKING_URI=http://<your-server-ip>:5000
+```
+
+Now all runs will be logged to the **remote server**, not the local file system.
+
+---
+
+## ✅ 4. Best Practices for Production ML with MLflow
+
+### ✅ Version Everything
+- Track all model versions and parameters
+- Use Git for versioning code and data pipeline scripts
+
+### ✅ Use Model Registry
+- Register your models and clearly define stages (`Staging`, `Production`)
+- Automate stage transitions using CI/CD
+
+### ✅ Automate with Pipelines
+- Use orchestration tools (Airflow, Prefect, Kubeflow) to automate training, evaluation, and deployment
+
+### ✅ Separate Dev and Prod
+- Use **different environments** or **namespaces** for dev vs prod
+- Avoid serving experimental models directly to users
+
+### ✅ Monitor and Retrain
+- Monitor model performance in production
+- Trigger retraining workflows if drift is detected
+
+### ✅ Secure Everything
+- Use SSL, auth proxies (e.g., nginx with basic auth or OAuth)
+- Protect artifact storage (S3, GCS) with IAM policies
+
+---
+
+## 🧠 Summary
+
+| Feature                         | Purpose                                                            |
+|---------------------------------|--------------------------------------------------------------------|
+| `mlflow models serve`           | Serve model via local REST API                                     |
+| `mlflow models build-docker`    | Package model as a Docker image                                    |
+| `mlflow sagemaker deploy`       | Deploy to AWS SageMaker                                            |
+| Remote Tracking Server          | Central experiment management and collaboration                    |
+| Model Registry                  | Manage, version, and transition models in your workflow            |
+| CI/CD & MLOps integration       | Automate training, testing, and deployment                         |
+| Best Practices                  | Secure, scalable, traceable ML pipelines                          |
+
+---
+
+## 🧪 Optional Exercise
+
+1. Set up a local MLflow Tracking Server.
+2. Change your script to point to the remote URI.
+3. Log a new experiment and check in the UI.
+4. Build a Docker image of your best model.
+5. Run the container and test prediction using `curl`.
+
+---
+
+🎉 Congratulations! You’ve now completed the full MLflow tutorial series. You’re ready to track, package, deploy, and scale ML projects using industry-grade tools.
+
+```bash
+🚀 Keep Building | 📈 Keep Tracking | 💡 Keep Improving
 ```
 
